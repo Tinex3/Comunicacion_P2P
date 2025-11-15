@@ -298,6 +298,8 @@ class LoRaSerialCommunicator:
                         line = line.strip()
                         
                         if line:
+                            # SIEMPRE imprimir TODO lo que viene del serial (DEBUG)
+                            print(f"[SERIAL RAW] {line}")
                             self._process_line(line)
                 
                 time.sleep(0.01)  # Pequeño delay para no saturar CPU

@@ -268,8 +268,8 @@ void Process_Received_Message() {
     if (state == RADIOLIB_ERR_NONE) {
         size_t packet_length = lora_modem.getPacketLength();
         
-        // Validar longitud mínima (magic + header básico)
-        if (packet_length < 8) {
+        // Validar longitud mínima (magic(4) + device_id(8) + source_id(8) + size(1) = 21 bytes mínimo)
+        if (packet_length < 25) {  // 21 + al menos algo de datos + CRC(2)
             Serial.println("DEBUG:PACKET_TOO_SHORT");
             digitalWrite(LED, LOW);
             lora_modem.startReceive();
@@ -277,7 +277,9 @@ void Process_Received_Message() {
         }
         
         // 1. VALIDAR MAGIC BYTES (filtrar ruido de LoRaWAN y otros)
-        uint32_t received_magic = *(uint32_t*)rx_buffer;
+        uint32_t received_magic = 0;
+        memcpy(&received_magic, rx_buffer, 4);
+        
         if (received_magic != PROTOCOL_MAGIC) {
             Serial.println("DEBUG:INVALID_MAGIC_BYTES:NOISE_FILTERED");
             digitalWrite(LED, LOW);
@@ -289,11 +291,18 @@ void Process_Received_Message() {
         uint16_t calc_crc = Calculate_CRC(rx_buffer, packet_length, CRC_POLY);
         
         if (calc_crc == 0) {
-            // CRC válido - decodificar mensaje
-            rx_message = *(Tk_IOT_LW_Message *)rx_buffer;
+            // CRC válido - extraer campos manualmente (sin cast peligroso)
+            uint64_t msg_device_id = 0;
+            uint64_t msg_source_id = 0;
+            
+            // Extraer DEVICE_ID (bytes 4-11)
+            memcpy(&msg_device_id, &rx_buffer[4], 8);
+            
+            // Extraer MESSAGE_SOURCE_ID (bytes 12-19)
+            memcpy(&msg_source_id, &rx_buffer[12], 8);
             
             // 3. IGNORAR mensajes propios (evitar eco)
-            if (rx_message.MESSAGE_SOURCE_ID == DEVICE_ID) {
+            if (msg_source_id == DEVICE_ID) {
                 Serial.println("DEBUG:IGNORING_OWN_MESSAGE");
                 digitalWrite(LED, LOW);
                 lora_modem.startReceive();
@@ -301,16 +310,25 @@ void Process_Received_Message() {
             }
             
             // 4. Extraer datos del chat (después del header: magic(4) + IDs(16) + size(1) = 21 bytes)
-            Chat_Message_Data* received_data = (Chat_Message_Data*)&rx_buffer[21];
+            Chat_Message_Data received_data;
+            memset(&received_data, 0, sizeof(received_data));
+            
+            // Copiar datos de manera segura
+            size_t data_offset = 21;
+            size_t max_copy = (packet_length - data_offset - 2); // -2 por CRC al final
+            if (max_copy > sizeof(Chat_Message_Data)) {
+                max_copy = sizeof(Chat_Message_Data);
+            }
+            memcpy(&received_data, &rx_buffer[data_offset], max_copy);
             
             // Obtener RSSI
             float rssi = lora_modem.getRSSI();
             
             // Enviar a Python
             Serial.print("RX:");
-            Serial.print(received_data->sender_name);
+            Serial.print(received_data.sender_name);
             Serial.print(":");
-            Serial.print(received_data->message);
+            Serial.print(received_data.message);
             Serial.print(":");
             Serial.println(rssi);
             
@@ -434,9 +452,17 @@ void setup() {
 // ===================== LOOP PRINCIPAL =====================
 
 void loop() {
-    // Procesar recepción LoRa
+    // Procesar recepción LoRa (con protección contra crashes)
     if (receivedFlag) {
         receivedFlag = false;
+        
+        // Deshabilitar interrupciones temporalmente para evitar re-entrada
+        noInterrupts();
+        bool flagCopy = receivedFlag;
+        receivedFlag = false;
+        interrupts();
+        
+        // Procesar mensaje
         Process_Received_Message();
     }
     
@@ -450,7 +476,9 @@ void loop() {
                 serialBuffer = "";
             }
         } else {
-            serialBuffer += c;
+            if (serialBuffer.length() < 200) {  // Protección contra overflow
+                serialBuffer += c;
+            }
         }
     }
     
