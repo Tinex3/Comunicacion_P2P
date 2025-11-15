@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  lora-chat-web:
+    build: .
+    container_name: lora-p2p-chat
+    ports:
+      - "8000:8000"
+    devices:
+      # Dar acceso a dispositivos USB/Serial
+      # Ajusta esto según tu puerto COM en Windows o /dev/ttyUSB* en Linux
+      # En Windows con WSL2, necesitarás usbipd
+      - /dev/ttyUSB0:/dev/ttyUSB0  # Linux
+      # - /dev/ttyACM0:/dev/ttyACM0  # Alternativa Linux
+    environment:
+      - PYTHONUNBUFFERED=1
+    volumes:
+      # Montar código para desarrollo (hot reload)
+      - ./web_server.py:/app/web_server.py
+      - ./serial_comm.py:/app/serial_comm.py
+      - ./static:/app/static
+    restart: unless-stopped
+    networks:
+      - lora-network
+
+networks:
+  lora-network:
+    driver: bridge

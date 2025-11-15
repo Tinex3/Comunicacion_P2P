@@ -1,0 +1,15 @@
+# Requirements para la versión web
+
+# Web Framework
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+websockets>=12.0
+
+# Comunicación Serial
+pyserial>=3.5
+
+# Data validation
+pydantic>=2.5.0
+
+# CORS
+python-multipart>=0.0.6
