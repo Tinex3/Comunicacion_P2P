@@ -14,6 +14,15 @@ import json
 from datetime import datetime
 import os
 import sys
+import threading
+import logging
+
+# Configurar logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 # Importar el comunicador serial existente
 sys.path.append(os.path.dirname(__file__))
@@ -71,6 +80,7 @@ class ChatState:
         self.current_port: Optional[str] = None
         self.start_time = datetime.now()
         self.rssi: Optional[float] = None
+        self.loop: Optional[asyncio.AbstractEventLoop] = None
     
     async def broadcast(self, message: dict):
         """Envía un mensaje a todos los clientes WebSocket conectados"""
@@ -108,30 +118,42 @@ def on_message_received(sender: str, message: str, rssi: str):
     msg = state.add_message(sender, message, rssi)
     
     # Broadcast a todos los clientes web
-    asyncio.create_task(state.broadcast({
-        "type": "message",
-        "data": {
-            "sender": sender,
-            "content": message,
-            "timestamp": msg.timestamp,
-            "rssi": rssi,
-            "is_own": False
-        }
-    }))
+    if state.loop and state.loop.is_running():
+        asyncio.run_coroutine_threadsafe(
+            state.broadcast({
+                "type": "message",
+                "data": {
+                    "sender": sender,
+                    "content": message,
+                    "timestamp": msg.timestamp,
+                    "rssi": rssi,
+                    "is_own": False
+                }
+            }),
+            state.loop
+        )
 
 def on_status_update(status: str):
     """Callback para actualizaciones de estado"""
-    asyncio.create_task(state.broadcast({
-        "type": "status",
-        "data": status
-    }))
+    if state.loop and state.loop.is_running():
+        asyncio.run_coroutine_threadsafe(
+            state.broadcast({
+                "type": "status",
+                "data": status
+            }),
+            state.loop
+        )
 
 def on_error(error: str):
     """Callback para errores"""
-    asyncio.create_task(state.broadcast({
-        "type": "error",
-        "data": error
-    }))
+    if state.loop and state.loop.is_running():
+        asyncio.run_coroutine_threadsafe(
+            state.broadcast({
+                "type": "error",
+                "data": error
+            }),
+            state.loop
+        )
 
 # ===================== ENDPOINTS REST =====================
 
@@ -153,8 +175,14 @@ async def get_available_ports():
 async def detect_lora_ports():
     """Detecta automáticamente puertos con dispositivos LoRa P2P mediante PING/PONG"""
     try:
+        logger.info("🔍 Iniciando detección automática de dispositivos LoRa...")
         lora_ports = LoRaSerialCommunicator.detect_lora_ports()
         all_ports = LoRaSerialCommunicator.list_available_ports()
+        
+        if lora_ports:
+            logger.info(f"✅ Dispositivos LoRa detectados: {', '.join(lora_ports)}")
+        else:
+            logger.warning("⚠️  No se detectaron dispositivos LoRa")
         
         return {
             "lora_ports": lora_ports,
@@ -168,6 +196,8 @@ async def detect_lora_ports():
 async def connect_device(config: UserConfig):
     """Conecta al dispositivo LoRa"""
     try:
+        logger.info(f"🔌 Solicitando conexión a {config.port} para usuario '{config.name}'")
+        
         # Desconectar si ya está conectado
         if state.communicator and state.is_connected:
             state.communicator.disconnect()
@@ -185,6 +215,8 @@ async def connect_device(config: UserConfig):
             state.current_port = config.port
             state.start_time = datetime.now()
             
+            logger.info(f"✅ Conexión exitosa - Usuario: {config.name}, Puerto: {config.port}")
+            
             return {
                 "success": True,
                 "message": "Conectado exitosamente",
@@ -201,11 +233,15 @@ async def connect_device(config: UserConfig):
 async def disconnect_device():
     """Desconecta del dispositivo LoRa"""
     try:
+        logger.info("🔌 Solicitando desconexión...")
+        
         if state.communicator:
             state.communicator.disconnect()
         
         state.is_connected = False
         state.current_port = None
+        
+        logger.info("✅ Desconectado exitosamente")
         
         return {"success": True, "message": "Desconectado"}
     
@@ -216,6 +252,16 @@ async def disconnect_device():
 async def send_message(message: Message):
     """Envía un mensaje vía LoRa"""
     try:
+        if not state.is_connected or not state.communicator:
+            logger.warning("⚠️  Intento de envío sin conexión activa")
+            raise HTTPException(status_code=400, detail="No conectado al dispositivo")
+        
+        # Validar longitud del mensaje
+        if len(message.content) > 96:
+            logger.warning(f"⚠️  Mensaje demasiado largo: {len(message.content)} caracteres")
+            raise HTTPException(status_code=400, detail="Mensaje demasiado largo (máx 96 caracteres)")
+        
+        logger.info(f"📤 API: Solicitando envío de mensaje de '{message.sender}': {message.content}")
         if not state.is_connected or not state.communicator:
             raise HTTPException(status_code=400, detail="No hay conexión con el dispositivo")
         
@@ -320,6 +366,9 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 @app.on_event("startup")
 async def startup_event():
     """Eventos al iniciar la aplicación"""
+    # Guardar el event loop para usarlo en callbacks desde threads
+    state.loop = asyncio.get_running_loop()
+    
     print("=" * 50)
     print("🚀 LoRa P2P Chat Web Server Starting...")
     print("=" * 50)

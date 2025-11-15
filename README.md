@@ -101,6 +101,7 @@ Comunicacion_P2P/
 └── docs/
     ├── README.md              # Este archivo
     ├── WEB_VERSION.md         # 🆕 Documentación versión Web
+    ├── LOGGING.md             # 🆕 Sistema de logs y debugging
     ├── ARQUITECTURA.md        # Diseño del sistema
     ├── MANUAL_USUARIO.md      # Guía completa
     └── API.md                 # Referencia técnica
@@ -116,9 +117,11 @@ Comunicacion_P2P/
 | **Comunicación tiempo real** | ✅ Threading | ✅ WebSockets |
 | **Acceso remoto** | ❌ Solo local | ✅ Posible desde red |
 | **Deploy** | Ejecutable local | Servidor web / Docker |
+| **Logging** | ✅ Consola | ✅ Docker logs / Consola |
 | **Ideal para** | Uso personal/escritorio | Acceso multi-dispositivo, producción |
 
-📖 **Documentación completa versión Web**: [`WEB_VERSION.md`](docs/WEB_VERSION.md)
+📖 **Documentación completa versión Web**: [`WEB_VERSION.md`](docs/WEB_VERSION.md)  
+🔍 **Sistema de logs y debugging**: [`LOGGING.md`](docs/LOGGING.md)
 
 ---
 
@@ -276,10 +279,49 @@ Este es un proyecto educativo. Las contribuciones son bienvenidas:
 - [x] ✅ Código LoRa TX/RX unificado en ESP32
 - [x] ✅ Adaptación de Light_Weight_Formatter/Decoder
 - [x] ✅ Interfaz gráfica Python con Tkinter
+- [x] ✅ Interfaz web con FastAPI y WebSockets
 - [x] ✅ Módulo de comunicación serial
+- [x] ✅ Sistema de logging completo
+- [x] ✅ Soporte Docker con docker-compose
+- [x] ✅ Auto-detección de dispositivos LoRa (PING/PONG)
 - [x] ✅ Documentación completa
 - [x] ✅ Manual de usuario
 - [x] ✅ Sistema integrado y funcional
+
+## 🔍 Debugging y Monitoreo
+
+El sistema incluye un **sistema de logging detallado** que facilita el debugging:
+
+### Ver Logs en Docker
+```bash
+# Logs en tiempo real
+docker-compose logs -f
+
+# O usar el script helper
+./view_docker_logs.sh  # Linux/Mac
+view_docker_logs.bat   # Windows
+```
+
+### Ver Logs en Ejecución Nativa
+```bash
+python web_server.py
+# Los logs aparecen directamente en la consola
+```
+
+### Monitor Serial ESP32
+```bash
+python test_serial_monitor.py COM3
+```
+
+### Tipos de Logs
+- 📥 **Mensajes recibidos** con RSSI
+- 📤 **Mensajes enviados** confirmados
+- ❌ **Errores de CRC** - datos corruptos
+- ⚠️ **Advertencias** - puerto incorrecto, mensaje largo
+- 🔌 **Conexión/desconexión** de dispositivos
+- 🔍 **Auto-detección** de puertos LoRa
+
+📖 **Documentación completa**: [`LOGGING.md`](docs/LOGGING.md)
 
 ## 📞 Soporte
 

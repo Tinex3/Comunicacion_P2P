@@ -7,7 +7,15 @@ import serial
 import serial.tools.list_ports
 import threading
 import time
+import logging
 from typing import Callable, Optional, List
+
+# Configurar logger
+logger = logging.getLogger(__name__)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 
 
 class LoRaSerialCommunicator:
@@ -150,6 +158,8 @@ class LoRaSerialCommunicator:
             # Extraer el nombre del puerto si viene con descripción
             port_name = port.split(' - ')[0] if ' - ' in port else port
             
+            logger.info(f"🔌 Conectando al puerto {port_name}...")
+            
             self.serial_port = serial.Serial(
                 port=port_name,
                 baudrate=self.baudrate,
@@ -165,6 +175,8 @@ class LoRaSerialCommunicator:
             self.serial_port.reset_output_buffer()
             
             self.is_connected = True
+            
+            logger.info(f"✅ Conectado exitosamente a {port_name}")
             
             # Iniciar thread de lectura
             self.running = True
@@ -183,6 +195,8 @@ class LoRaSerialCommunicator:
     
     def disconnect(self):
         """Desconecta del puerto serial"""
+        logger.info("🔌 Desconectando...")
+        
         self.running = False
         
         if self.read_thread:
@@ -192,6 +206,7 @@ class LoRaSerialCommunicator:
             self.serial_port.close()
         
         self.is_connected = False
+        logger.info("✅ Desconectado exitosamente")
     
     def send_message(self, sender_name: str, message: str) -> bool:
         """
@@ -205,6 +220,7 @@ class LoRaSerialCommunicator:
             True si el mensaje se envió correctamente
         """
         if not self.is_connected or not self.serial_port:
+            logger.warning("⚠️  Intento de envío sin conexión activa")
             if self.on_error:
                 self.on_error("No hay conexión con el dispositivo")
             return False
@@ -214,9 +230,11 @@ class LoRaSerialCommunicator:
             command = f"TX:{sender_name}:{message}\n"
             self.serial_port.write(command.encode('utf-8'))
             self.serial_port.flush()
+            logger.info(f"📡 Enviando mensaje de '{sender_name}': {message}")
             return True
             
         except serial.SerialException as e:
+            logger.error(f"❌ Error al enviar mensaje: {str(e)}")
             if self.on_error:
                 self.on_error(f"Error al enviar: {str(e)}")
             return False
@@ -307,36 +325,64 @@ class LoRaSerialCommunicator:
                 message = parts[2]
                 rssi = parts[3]
                 
+                logger.info(f"📥 Mensaje recibido de '{sender_name}': {message} (RSSI: {rssi} dBm)")
+                
                 if self.on_message_received:
                     self.on_message_received(sender_name, message, rssi)
         
         # Mensaje enviado confirmado: SENT:OK:Nombre:Mensaje
         elif line.startswith("SENT:OK:"):
+            parts = line.split(':', 3)
+            if len(parts) >= 4:
+                name = parts[2]
+                msg = parts[3]
+                logger.info(f"📤 Mensaje enviado exitosamente por '{name}': {msg}")
+            
             if self.on_status_update:
                 self.on_status_update("Mensaje enviado correctamente")
         
         # Estado del dispositivo
         elif line.startswith("STATUS:"):
+            logger.info(f"ℹ️  Estado: {line}")
             if self.on_status_update:
                 self.on_status_update(line)
         
         # RSSI
         elif line.startswith("RSSI:"):
+            logger.debug(f"📊 {line}")
             if self.on_status_update:
                 self.on_status_update(line)
         
         # Errores
         elif line.startswith("ERROR:"):
+            # Identificar tipos de error específicos
+            if "CRC_INVALID" in line:
+                logger.error(f"❌ Error de CRC - Datos corruptos recibidos")
+            elif "TX_FAILED" in line:
+                logger.error(f"❌ Error de transmisión LoRa: {line}")
+            elif "RX_FAILED" in line:
+                logger.error(f"❌ Error de recepción LoRa: {line}")
+            else:
+                logger.error(f"❌ {line}")
+            
             if self.on_error:
                 self.on_error(line)
         
         # Ready
         elif line == "READY":
+            logger.info(f"✅ Dispositivo LoRa inicializado y listo")
             if self.on_status_update:
                 self.on_status_update("Dispositivo listo")
         
+        # PONG response
+        elif line.startswith("PONG:"):
+            logger.debug(f"🏓 Respuesta PING recibida: {line}")
+            if self.on_status_update:
+                self.on_status_update(line)
+        
         # Otros mensajes informativos
         else:
+            logger.debug(f"▪️  {line}")
             if self.on_status_update:
                 self.on_status_update(line)
 
