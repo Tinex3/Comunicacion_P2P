@@ -27,6 +27,9 @@ COPY web_server.py .
 COPY serial_comm.py .
 COPY static/ ./static/
 
+# Copiar scripts de diagnóstico y testing (opcionales)
+COPY test_*.py ./
+
 # Exponer puerto
 EXPOSE 8000
 
