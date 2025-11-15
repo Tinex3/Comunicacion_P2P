@@ -53,7 +53,8 @@ class LoRaChatGUI:
             try:
                 with open(self.CONFIG_FILE, 'r', encoding='utf-8') as f:
                     return json.load(f)
-            except:
+            except (json.JSONDecodeError, IOError) as e:
+                print(f"Error al cargar configuración: {e}")
                 return {}
         return {}
     

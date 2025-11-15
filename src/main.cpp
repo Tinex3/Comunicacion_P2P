@@ -32,7 +32,7 @@
 #define MAX_MESSAGE_LENGTH 96
 #define MAX_NAME_LENGTH 32
 #define SERIAL_BAUD_RATE 115200
-#define BUFFER_SIZE 128
+#define BUFFER_SIZE 192  // Aumentado de 128 a 192 (header 21 + data 128 + CRC 2 + margen)
 const uint16_t CRC_POLY = 0xA001;
 
 // Magic bytes para identificar nuestro protocolo (filtrar LoRaWAN y otros)
@@ -205,6 +205,9 @@ bool Send_LoRa_Message(const char* name, const char* msg) {
     strncpy(chat_data.sender_name, name, MAX_NAME_LENGTH - 1);
     strncpy(chat_data.message, msg, MAX_MESSAGE_LENGTH - 1);
     
+    // Asegurar que MESSAGE_SOURCE_ID está configurado
+    tx_message.MESSAGE_SOURCE_ID = DEVICE_ID;
+    
     // Reiniciar formateador
     LW_Formatter_Restart(&LW_Formatter);
     
@@ -268,9 +271,17 @@ void Process_Received_Message() {
     if (state == RADIOLIB_ERR_NONE) {
         size_t packet_length = lora_modem.getPacketLength();
         
-        // Validar longitud mínima (magic(4) + device_id(8) + source_id(8) + size(1) = 21 bytes mínimo)
-        if (packet_length < 25) {  // 21 + al menos algo de datos + CRC(2)
+        // Validar longitud mínima (magic(4) + device_id(8) + source_id(8) + size(1) + CRC(2) = 23 bytes mínimo)
+        if (packet_length < 23) {
             Serial.println("DEBUG:PACKET_TOO_SHORT");
+            digitalWrite(LED, LOW);
+            lora_modem.startReceive();
+            return;
+        }
+        
+        // Validar que el paquete no exceda el buffer
+        if (packet_length > BUFFER_SIZE) {
+            Serial.println("DEBUG:PACKET_TOO_LARGE");
             digitalWrite(LED, LOW);
             lora_modem.startReceive();
             return;
@@ -288,6 +299,8 @@ void Process_Received_Message() {
         }
         
         // 2. Validar CRC
+        // NOTA: El CRC se calcula sobre todo el paquete (datos + CRC incluido)
+        // Un paquete válido debe dar resultado 0 (propiedad matemática del CRC)
         uint16_t calc_crc = Calculate_CRC(rx_buffer, packet_length, CRC_POLY);
         
         if (calc_crc == 0) {
@@ -309,13 +322,24 @@ void Process_Received_Message() {
                 return;
             }
             
-            // 4. Extraer datos del chat (después del header: magic(4) + IDs(16) + size(1) = 21 bytes)
+            // 4. Extraer y validar DATA_BYTE_SIZE
+            uint8_t data_size = rx_buffer[20];  // Byte 20 contiene DATA_BYTE_SIZE
+            
+            // Validar coherencia: header(21) + data_size + CRC(2) debe ser <= packet_length
+            if ((21 + data_size + 2) > packet_length) {
+                Serial.println("DEBUG:INVALID_DATA_SIZE");
+                digitalWrite(LED, LOW);
+                lora_modem.startReceive();
+                return;
+            }
+            
+            // 5. Extraer datos del chat (después del header: magic(4) + IDs(16) + size(1) = 21 bytes)
             Chat_Message_Data received_data;
             memset(&received_data, 0, sizeof(received_data));
             
-            // Copiar datos de manera segura
+            // Copiar datos de manera segura usando el tamaño validado
             size_t data_offset = 21;
-            size_t max_copy = (packet_length - data_offset - 2); // -2 por CRC al final
+            size_t max_copy = data_size;
             if (max_copy > sizeof(Chat_Message_Data)) {
                 max_copy = sizeof(Chat_Message_Data);
             }
@@ -415,8 +439,6 @@ void setup() {
     
     // Generar ID único basado en MAC del ESP32
     DEVICE_ID = Generate_Unique_ID();
-    tx_message.DEVICE_ID = DEVICE_ID;
-    tx_message.MESSAGE_SOURCE_ID = DEVICE_ID;
     
     Serial.print("DEVICE_ID: 0x");
     Serial.println((unsigned long long)DEVICE_ID, HEX);
@@ -430,9 +452,10 @@ void setup() {
     // Inicializar decodificador
     LW_Decoder_Init(&LW_Decoder, rx_buffer, BUFFER_SIZE);
     
-    // Configurar mensaje TX
+    // Configurar mensaje TX (una sola vez)
+    tx_message.magic = PROTOCOL_MAGIC;
     tx_message.DEVICE_ID = DEVICE_ID;
-    tx_message.MESSAGE_SOURCE_ID = 0x0;
+    tx_message.MESSAGE_SOURCE_ID = DEVICE_ID;
     tx_message.DATA_PTR = (uint8_t *)&chat_data;
     
     // Inicializar LoRa

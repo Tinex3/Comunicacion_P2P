@@ -104,7 +104,8 @@ class ChatState:
         if rssi:
             try:
                 self.rssi = float(rssi)
-            except:
+            except (ValueError, TypeError) as e:
+                logger.debug(f"No se pudo convertir RSSI a float: {rssi}")
                 pass
         
         return msg
