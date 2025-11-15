@@ -371,6 +371,18 @@
             border: 1px solid var(--success-color);
             color: #69f0ae;
         }
+
+        .alert-warning {
+            background: rgba(255, 152, 0, 0.2);
+            border: 1px solid #ff9800;
+            color: #ffb74d;
+        }
+
+        .alert-info {
+            background: rgba(33, 150, 243, 0.2);
+            border: 1px solid #2196F3;
+            color: #64b5f6;
+        }
     </style>
 </head>
 <body>
@@ -407,6 +419,7 @@
 
             <div style="margin-top: 30px;">
                 <button class="btn btn-secondary" onclick="refreshPorts()">🔄 Actualizar Puertos</button>
+                <button class="btn btn-success" onclick="autoDetectPorts()">🔍 Auto-detectar LoRa</button>
                 <button class="btn btn-primary" onclick="connect()" id="connectBtn">Conectar</button>
             </div>
         </div>

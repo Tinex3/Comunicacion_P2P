@@ -69,7 +69,7 @@ pio run -t upload
 
 3. **Configuración inicial**
    - Ingresa tu nombre (máximo 30 caracteres)
-   - Selecciona el puerto COM correcto
+   - Selecciona el puerto serie correcto (COM, ttyUSB, ttyACM, etc.)
    - Haz clic en "Conectar y Comenzar"
 
 4. **Enviar mensajes**
@@ -161,7 +161,7 @@ pio run -t upload
 
 ## Solución de Problemas
 
-### No se detecta el puerto COM
+### No se detecta el puerto serie
 
 **Problema**: La aplicación no muestra puertos disponibles
 

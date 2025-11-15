@@ -142,10 +142,25 @@ async def read_root():
 
 @app.get("/api/ports")
 async def get_available_ports():
-    """Lista todos los puertos COM disponibles"""
+    """Lista todos los puertos serie disponibles (COM, ttyUSB, ttyACM, etc.) con descripción"""
     try:
         ports = LoRaSerialCommunicator.list_available_ports()
         return {"ports": ports}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/ports/detect")
+async def detect_lora_ports():
+    """Detecta automáticamente puertos con dispositivos LoRa P2P mediante PING/PONG"""
+    try:
+        lora_ports = LoRaSerialCommunicator.detect_lora_ports()
+        all_ports = LoRaSerialCommunicator.list_available_ports()
+        
+        return {
+            "lora_ports": lora_ports,
+            "all_ports": all_ports,
+            "detected": len(lora_ports) > 0
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

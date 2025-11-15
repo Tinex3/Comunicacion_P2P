@@ -34,27 +34,124 @@ class LoRaSerialCommunicator:
     @staticmethod
     def list_available_ports() -> List[str]:
         """
-        Lista todos los puertos COM disponibles
+        Lista todos los puertos serie disponibles (COM, ttyUSB, ttyACM, etc.)
+        con información descriptiva del dispositivo
         
         Returns:
-            Lista de nombres de puertos disponibles
+            Lista de strings en formato: "PUERTO - Descripción" (ej: "COM3 - USB Serial Port")
+            o solo "PUERTO" si no hay descripción disponible
         """
         ports = serial.tools.list_ports.comports()
-        return [port.device for port in ports]
+        port_list = []
+        
+        for port in sorted(ports, key=lambda x: x.device):
+            # Construir descripción informativa
+            if port.description and port.description != port.device:
+                # Incluir fabricante si está disponible
+                if port.manufacturer and port.manufacturer not in port.description:
+                    desc = f"{port.device} - {port.manufacturer} - {port.description}"
+                else:
+                    desc = f"{port.device} - {port.description}"
+            else:
+                desc = port.device
+            
+            port_list.append(desc)
+        
+        return port_list
+    
+    @staticmethod
+    def ping_port(port: str, timeout: float = 2.0) -> bool:
+        """
+        Envía un PING al puerto para verificar si hay un dispositivo LoRa P2P
+        
+        Args:
+            port: Nombre del puerto (puede incluir descripción con ' - ')
+            timeout: Tiempo máximo de espera en segundos
+            
+        Returns:
+            True si el dispositivo responde con PONG:LORA_P2P, False en caso contrario
+        """
+        try:
+            # Extraer el nombre del puerto si viene con descripción
+            port_name = port.split(' - ')[0] if ' - ' in port else port
+            
+            # Abrir puerto temporalmente
+            ser = serial.Serial(
+                port=port_name,
+                baudrate=115200,
+                timeout=timeout,
+                write_timeout=1
+            )
+            
+            # Esperar inicialización
+            time.sleep(0.5)
+            
+            # Limpiar buffers
+            ser.reset_input_buffer()
+            ser.reset_output_buffer()
+            
+            # Enviar PING
+            ser.write(b"PING\n")
+            ser.flush()
+            
+            # Esperar respuesta
+            start_time = time.time()
+            while (time.time() - start_time) < timeout:
+                if ser.in_waiting > 0:
+                    line = ser.readline().decode('utf-8', errors='ignore').strip()
+                    if line.startswith("PONG:LORA_P2P"):
+                        ser.close()
+                        return True
+                time.sleep(0.1)
+            
+            ser.close()
+            return False
+            
+        except Exception as e:
+            return False
+    
+    @staticmethod
+    def detect_lora_ports(progress_callback: Optional[Callable] = None) -> List[str]:
+        """
+        Detecta automáticamente los puertos con dispositivos LoRa P2P conectados
+        mediante PING/PONG
+        
+        Args:
+            progress_callback: Función opcional para reportar progreso
+                              Recibe (puerto_actual, total_puertos)
+        
+        Returns:
+            Lista de puertos que respondieron al PING (con descripción)
+        """
+        all_ports = LoRaSerialCommunicator.list_available_ports()
+        lora_ports = []
+        
+        for idx, port in enumerate(all_ports):
+            if progress_callback:
+                progress_callback(port, idx + 1, len(all_ports))
+            
+            if LoRaSerialCommunicator.ping_port(port, timeout=1.5):
+                lora_ports.append(port)
+        
+        return lora_ports
     
     def connect(self, port: str) -> bool:
         """
         Conecta al puerto serial especificado
         
         Args:
-            port: Nombre del puerto (ej: 'COM3' o '/dev/ttyUSB0')
+            port: Nombre del puerto (ej: 'COM3 - USB Serial' o '/dev/ttyUSB0')
+                 Si contiene ' - ', se extrae solo la parte del nombre del puerto
             
         Returns:
             True si la conexión fue exitosa
         """
         try:
+            # Extraer el nombre del puerto si viene con descripción
+            port_name = port.split(' - ')[0] if ' - ' in port else port
+            
             self.serial_port = serial.Serial(
-                port=port,
+                port=port_name,
                 baudrate=self.baudrate,
                 timeout=1,
                 write_timeout=1

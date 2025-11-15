@@ -102,13 +102,62 @@ docker-compose down
 docker-compose build --no-cache
 ```
 
-**Nota Windows**: Para acceso USB en Docker Desktop en Windows, necesitas WSL2 y usbipd:
+#### Acceso a Puertos USB/Serial en Docker
+
+**Linux (nativo):**
+El `docker-compose.yml` incluye mapeo de múltiples puertos:
+- `/dev/ttyUSB0-3` - Adaptadores USB-Serial (CP210x, FTDI, CH340)
+- `/dev/ttyACM0-3` - Dispositivos ACM (Arduino, ESP32 nativos)
+
+Si necesitas acceso a TODOS los dispositivos (desarrollo):
+```bash
+# Usar configuración privilegiada
+cp docker-compose.override.yml.example docker-compose.override.yml
+docker-compose up
+```
+
+**Windows con Docker Desktop:**
+Requiere WSL2 + usbipd para mapear puertos USB:
+
+1. Instalar usbipd en Windows:
 ```powershell
 # En PowerShell como Administrador
 winget install usbipd
-usbipd wsl list
-usbipd wsl attach --busid <BUSID>
 ```
+
+2. En WSL2, instalar herramientas:
+```bash
+cd python_gui
+chmod +x setup_usb_wsl2.sh
+./setup_usb_wsl2.sh
+```
+
+3. Conectar dispositivo USB:
+```powershell
+# En PowerShell como Administrador
+
+# Listar dispositivos USB
+usbipd list
+
+# Conectar dispositivo (ej: BUSID 1-4)
+usbipd bind --busid 1-4
+usbipd attach --wsl --busid 1-4
+```
+
+4. Verificar en WSL2:
+```bash
+ls -la /dev/ttyUSB* /dev/ttyACM*
+```
+
+5. Ejecutar Docker:
+```bash
+docker-compose up
+```
+
+**Mac:**
+Docker Desktop en Mac no soporta acceso directo a USB. Alternativas:
+- Ejecutar nativamente (sin Docker): `python web_server.py`
+- Usar Docker solo en Linux/WSL2
 
 ---
 
@@ -165,12 +214,15 @@ usbipd wsl attach --busid <BUSID>
 ### Endpoints Disponibles
 
 #### GET `/api/ports`
-Lista puertos COM disponibles
+Lista puertos serie disponibles (COM, ttyUSB, ttyACM, etc.) con descripción
 
 **Respuesta:**
 ```json
 {
-  "ports": ["COM3", "COM4"]
+  "ports": [
+    "COM3 - Silicon Labs - CP210x USB to UART Bridge",
+    "/dev/ttyUSB0 - FTDI - USB Serial Port"
+  ]
 }
 ```
 

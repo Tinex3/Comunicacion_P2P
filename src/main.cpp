@@ -292,6 +292,10 @@ void Process_Serial_Command(String command) {
             Serial.println("ERROR:INVALID_TX_FORMAT");
         }
     }
+    // Comando PING - Responde PONG para identificación automática
+    else if (command == "PING") {
+        Serial.println("PONG:LORA_P2P");
+    }
     // Comando STATUS
     else if (command == "STATUS") {
         Serial.print("STATUS:OK:ID:");

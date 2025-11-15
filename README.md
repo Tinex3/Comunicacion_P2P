@@ -69,6 +69,8 @@ Este proyecto implementa un sistema de chat inalámbrico de largo alcance usando
    docker-compose up
    # Acceder a: http://localhost:8000
    ```
+   
+   > **Nota:** Para Docker en Windows, consulta [`WEB_VERSION.md`](docs/WEB_VERSION.md) para configurar acceso USB con WSL2.
 
 ## 📁 Estructura del Proyecto
 

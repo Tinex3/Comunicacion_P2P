@@ -91,13 +91,54 @@ async function refreshPorts() {
             showAlert(`${data.ports.length} puerto(s) encontrado(s)`, 'success');
         } else {
             portSelect.innerHTML = '<option value="">No se encontraron puertos</option>';
-            showAlert('No se encontraron puertos COM', 'error');
+            showAlert('No se encontraron puertos serie', 'error');
         }
     } catch (error) {
         console.error('Error cargando puertos:', error);
         showAlert('Error al cargar puertos', 'error');
     }
 }
+
+async function autoDetectPorts() {
+    try {
+        showAlert('🔍 Detectando dispositivos LoRa P2P...', 'info');
+        
+        const response = await fetch(`${API_URL}/api/ports/detect`);
+        const data = await response.json();
+        
+        const portSelect = document.getElementById('portSelect');
+        portSelect.innerHTML = '';
+        
+        if (data.lora_ports && data.lora_ports.length > 0) {
+            // Mostrar solo puertos LoRa detectados
+            data.lora_ports.forEach(port => {
+                const option = document.createElement('option');
+                option.value = port;
+                option.textContent = `✅ ${port}`;
+                portSelect.appendChild(option);
+            });
+            showAlert(`✅ ${data.lora_ports.length} dispositivo(s) LoRa encontrado(s)`, 'success');
+        } else {
+            // No se detectaron dispositivos LoRa, mostrar todos los puertos
+            if (data.all_ports && data.all_ports.length > 0) {
+                data.all_ports.forEach(port => {
+                    const option = document.createElement('option');
+                    option.value = port;
+                    option.textContent = port;
+                    portSelect.appendChild(option);
+                });
+                showAlert('⚠️ No se detectaron dispositivos LoRa (mostrando todos los puertos)', 'warning');
+            } else {
+                portSelect.innerHTML = '<option value="">No se encontraron puertos</option>';
+                showAlert('No se encontraron puertos serie', 'error');
+            }
+        }
+    } catch (error) {
+        console.error('Error en auto-detección:', error);
+        showAlert('Error en auto-detección. Intenta refrescar manualmente.', 'error');
+    }
+}
+
 
 async function connect() {
     const name = document.getElementById('nameInput').value.trim();

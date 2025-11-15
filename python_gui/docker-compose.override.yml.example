@@ -1,0 +1,29 @@
+# docker-compose.override.yml
+# Este archivo proporciona una configuración alternativa con acceso privilegiado
+# a todos los dispositivos del sistema (modo privilegiado)
+#
+# USAR SOLO EN DESARROLLO - NO RECOMENDADO PARA PRODUCCIÓN
+#
+# Para usar esta configuración:
+#   docker-compose -f docker-compose.yml -f docker-compose.override.yml up
+#
+# O simplemente:
+#   docker-compose up
+#   (Docker Compose automáticamente fusiona ambos archivos si existen)
+
+version: '3.8'
+
+services:
+  lora-chat-web:
+    # Modo privilegiado: da acceso completo a todos los dispositivos del host
+    # Esto permite detectar automáticamente TODOS los puertos USB/Serial
+    privileged: true
+    
+    # Montar el directorio completo de dispositivos
+    volumes:
+      - /dev:/dev
+    
+    # Variables de entorno adicionales para debugging
+    environment:
+      - LOG_LEVEL=DEBUG
+      - PYTHONUNBUFFERED=1

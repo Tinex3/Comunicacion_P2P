@@ -80,7 +80,7 @@ typedef struct {
 **Archivo**: `python_gui/main.py`
 
 **Características**:
-- ✅ Ventana de configuración inicial (nombre + puerto COM)
+- ✅ Ventana de configuración inicial (nombre + puerto serie)
 - ✅ Interfaz principal de chat
 - ✅ Área de mensajes con scroll
 - ✅ Campo de entrada con contador de caracteres (0/96)

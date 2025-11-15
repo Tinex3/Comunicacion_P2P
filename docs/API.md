@@ -151,14 +151,17 @@ comm = LoRaSerialCommunicator()
 @staticmethod
 def list_available_ports() -> List[str]
 ```
-**Descripción**: Lista todos los puertos COM disponibles.
+**Descripción**: Lista todos los puertos serie disponibles (COM, ttyUSB, ttyACM, etc.) con información descriptiva del dispositivo.
 
-**Retorna**: Lista de nombres de puertos (ej: ['COM3', 'COM4'])
+**Retorna**: Lista de strings en formato "PUERTO - Descripción" (ej: ['COM3 - USB Serial Port', '/dev/ttyUSB0 - CP2102 USB to UART'])
 
 **Uso**:
 ```python
 ports = LoRaSerialCommunicator.list_available_ports()
 print(f"Puertos disponibles: {ports}")
+# Salida ejemplo:
+# ['COM3 - Silicon Labs - CP210x USB to UART Bridge',
+#  '/dev/ttyUSB0 - FTDI - USB Serial Port']
 ```
 
 ---
@@ -167,15 +170,20 @@ print(f"Puertos disponibles: {ports}")
 ```python
 def connect(self, port: str) -> bool
 ```
-**Descripción**: Conecta al puerto serial especificado.
+**Descripción**: Conecta al puerto serial especificado. Si el puerto incluye descripción (formato "PUERTO - Descripción"), se extrae automáticamente solo el nombre del puerto.
 
 **Parámetros**:
-- `port`: Nombre del puerto (ej: 'COM3' o '/dev/ttyUSB0')
+- `port`: Nombre del puerto completo (ej: 'COM3 - USB Serial', '/dev/ttyUSB0', o 'COM3')
 
 **Retorna**: `True` si la conexión fue exitosa.
 
 **Uso**:
 ```python
+# Con descripción (del dropdown)
+if comm.connect('COM3 - Silicon Labs CP210x'):
+    print("Conectado")
+
+# Sin descripción (directo)
 if comm.connect('COM3'):
     print("Conectado")
 ```
@@ -394,8 +402,8 @@ float temp = LW_Decoder_Decode_Float(&decoder);
 | Excepción | Causa |
 |-----------|-------|
 | `serial.SerialException` | Error de comunicación serial |
-| `FileNotFoundError` | Puerto COM no encontrado |
-| `PermissionError` | Puerto COM en uso por otra aplicación |
+| `FileNotFoundError` | Puerto serie no encontrado |
+| `PermissionError` | Puerto serie en uso por otra aplicación |
 
 ---
 

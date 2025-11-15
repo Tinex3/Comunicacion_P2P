@@ -125,6 +125,15 @@ class LoRaChatGUI:
         )
         refresh_btn.pack(side='left', padx=5)
         
+        # Botón detectar automáticamente
+        detect_btn = ttk.Button(
+            port_select_frame,
+            text="🔍 Auto-detectar",
+            command=self.auto_detect_ports,
+            width=15
+        )
+        detect_btn.pack(side='left', padx=5)
+        
         # Botón conectar
         connect_btn = ttk.Button(
             self.setup_frame,
@@ -147,24 +156,78 @@ class LoRaChatGUI:
         self.refresh_ports()
     
     def refresh_ports(self):
-        """Actualiza la lista de puertos COM disponibles"""
+        """Actualiza la lista de puertos serie disponibles (COM, ttyUSB, ttyACM, etc.)"""
         ports = LoRaSerialCommunicator.list_available_ports()
         self.port_combo['values'] = ports
         
         if ports:
-            # Seleccionar el último puerto usado o el primero
-            if self.last_port in ports:
-                self.port_combo.set(self.last_port)
-            else:
+            # Buscar el último puerto usado (comparando solo el nombre del dispositivo)
+            last_port_found = False
+            if self.last_port:
+                # Extraer el nombre del dispositivo del último puerto guardado
+                last_port_device = self.last_port.split(' - ')[0]
+                for port in ports:
+                    if port.startswith(last_port_device):
+                        self.port_combo.set(port)
+                        last_port_found = True
+                        break
+            
+            # Si no se encuentra el último puerto, seleccionar el primero
+            if not last_port_found:
                 self.port_combo.current(0)
+            
             self.setup_status_label.config(
                 text=f"{len(ports)} puerto(s) encontrado(s)",
                 foreground="green"
             )
         else:
             self.setup_status_label.config(
-                text="No se encontraron puertos COM",
+                text="No se encontraron puertos serie",
                 foreground="red"
+            )
+    
+    def auto_detect_ports(self):
+        """Detecta automáticamente puertos con dispositivos LoRa P2P"""
+        self.setup_status_label.config(text="Detectando dispositivos LoRa...", foreground="blue")
+        self.root.update()
+        
+        def progress_callback(port, current, total):
+            """Actualiza el estado durante la detección"""
+            self.setup_status_label.config(
+                text=f"Probando {current}/{total}: {port.split(' - ')[0]}...",
+                foreground="blue"
+            )
+            self.root.update()
+        
+        # Ejecutar detección en thread para no bloquear UI
+        import threading
+        
+        def detect_thread():
+            lora_ports = LoRaSerialCommunicator.detect_lora_ports(progress_callback)
+            
+            # Actualizar UI en thread principal
+            self.root.after(0, lambda: self.on_detection_complete(lora_ports))
+        
+        thread = threading.Thread(target=detect_thread, daemon=True)
+        thread.start()
+    
+    def on_detection_complete(self, lora_ports):
+        """Callback cuando la detección automática termina"""
+        if lora_ports:
+            self.port_combo['values'] = lora_ports
+            self.port_combo.current(0)
+            self.setup_status_label.config(
+                text=f"✅ {len(lora_ports)} dispositivo(s) LoRa encontrado(s)",
+                foreground="green"
+            )
+        else:
+            all_ports = LoRaSerialCommunicator.list_available_ports()
+            self.port_combo['values'] = all_ports
+            if all_ports:
+                self.port_combo.current(0)
+            self.setup_status_label.config(
+                text="⚠️ No se detectaron dispositivos LoRa (mostrando todos los puertos)",
+                foreground="orange"
             )
     
     def start_chat(self):
@@ -182,7 +245,7 @@ class LoRaChatGUI:
         # Validar puerto
         port = self.port_combo.get()
         if not port:
-            messagebox.showerror("Error", "Por favor selecciona un puerto COM")
+            messagebox.showerror("Error", "Por favor selecciona un puerto serie")
             return
         
         # Guardar configuración

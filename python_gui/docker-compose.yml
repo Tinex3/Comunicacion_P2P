@@ -7,11 +7,21 @@ services:
     ports:
       - "8000:8000"
     devices:
-      # Dar acceso a dispositivos USB/Serial
-      # Ajusta esto según tu puerto COM en Windows o /dev/ttyUSB* en Linux
-      # En Windows con WSL2, necesitarás usbipd
-      - /dev/ttyUSB0:/dev/ttyUSB0  # Linux
-      # - /dev/ttyACM0:/dev/ttyACM0  # Alternativa Linux
+      # Mapear todos los puertos USB/Serial comunes
+      # Comenta/descomenta según los puertos disponibles en tu sistema
+      # Linux - USB Serial (CP210x, FTDI, CH340, etc.)
+      - /dev/ttyUSB0:/dev/ttyUSB0
+      - /dev/ttyUSB1:/dev/ttyUSB1
+      - /dev/ttyUSB2:/dev/ttyUSB2
+      - /dev/ttyUSB3:/dev/ttyUSB3
+      # Linux - ACM (Arduino, ESP32 nativos, etc.)
+      - /dev/ttyACM0:/dev/ttyACM0
+      - /dev/ttyACM1:/dev/ttyACM1
+      - /dev/ttyACM2:/dev/ttyACM2
+      - /dev/ttyACM3:/dev/ttyACM3
+      # NOTA: En Windows con WSL2, necesitarás usbipd para mapear puertos COM
+      # Ver: https://learn.microsoft.com/en-us/windows/wsl/connect-usb
+    privileged: false  # Cambiar a true si tienes problemas de permisos
     environment:
       - PYTHONUNBUFFERED=1
     volumes:
