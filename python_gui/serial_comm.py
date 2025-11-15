@@ -380,6 +380,19 @@ class LoRaSerialCommunicator:
             if self.on_status_update:
                 self.on_status_update(line)
         
+        # Debug messages
+        elif line.startswith("DEBUG:"):
+            if "IGNORING_OWN_MESSAGE" in line:
+                logger.debug(f"🔇 Mensaje propio ignorado (evitando eco)")
+            elif "INVALID_MAGIC_BYTES" in line:
+                logger.debug(f"🛡️ Ruido filtrado - Magic bytes inválidos (probablemente LoRaWAN u otro protocolo)")
+            elif "PACKET_TOO_SHORT" in line:
+                logger.debug(f"🛡️ Paquete demasiado corto ignorado")
+            else:
+                logger.debug(f"🐛 {line}")
+            if self.on_status_update:
+                self.on_status_update(line)
+        
         # Otros mensajes informativos
         else:
             logger.debug(f"▪️  {line}")

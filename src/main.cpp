@@ -35,6 +35,9 @@
 #define BUFFER_SIZE 128
 const uint16_t CRC_POLY = 0xA001;
 
+// Magic bytes para identificar nuestro protocolo (filtrar LoRaWAN y otros)
+const uint32_t PROTOCOL_MAGIC = 0x50505050;  // Patrón distintivo para nuestro protocolo P2P
+
 // ===================== ESTRUCTURAS DE DATOS =====================
 
 // Estructura para mensaje de chat
@@ -43,8 +46,9 @@ typedef struct {
     char message[MAX_MESSAGE_LENGTH];
 } Chat_Message_Data;
 
-// Estructura del protocolo LoRa
+// Estructura del protocolo LoRa con magic bytes
 typedef struct {
+    uint32_t magic;              // Magic bytes para filtrar ruido
     uint64_t DEVICE_ID;
     uint64_t MESSAGE_SOURCE_ID;
     uint8_t DATA_BYTE_SIZE;
@@ -78,8 +82,8 @@ Chat_Message_Data chat_data;
 volatile bool receivedFlag = false;
 volatile bool transmitFlag = false;
 
-// ID del dispositivo (único por dispositivo)
-uint64_t DEVICE_ID = 0x0000000000000001; // Se puede configurar vía serial
+// ID del dispositivo (generado aleatoriamente en cada inicio basado en MAC)
+uint64_t DEVICE_ID = 0;
 
 // Buffer para comandos serial
 String serialBuffer = "";
@@ -113,6 +117,31 @@ uint16_t Calculate_CRC(uint8_t *data, uint16_t length, const uint16_t poly) {
         }
     }
     return crc;
+}
+
+/**
+ * @brief Genera un ID único basado en la dirección MAC del ESP32
+ * @return ID único de 64 bits
+ */
+uint64_t Generate_Unique_ID() {
+    uint8_t mac[6];
+    esp_read_mac(mac, ESP_MAC_WIFI_STA);
+    
+    // Combinar MAC address con timestamp para máxima unicidad
+    uint64_t id = 0;
+    for (int i = 0; i < 6; i++) {
+        id = (id << 8) | mac[i];
+    }
+    
+    // Mezclar con millis() para añadir entropía adicional
+    id ^= ((uint64_t)millis() << 16);
+    
+    // Asegurar que nunca sea 0
+    if (id == 0) {
+        id = 0x544B524F59; // "TKROY" como fallback
+    }
+    
+    return id;
 }
 
 /**
@@ -179,13 +208,18 @@ bool Send_LoRa_Message(const char* name, const char* msg) {
     // Reiniciar formateador
     LW_Formatter_Restart(&LW_Formatter);
     
-    // Agregar campos del protocolo
+    // 1. AGREGAR MAGIC BYTES (para filtrar ruido)
+    tx_message.magic = PROTOCOL_MAGIC;
+    LW_Formatter_Add_Variable_Interface(&LW_Formatter, 
+        (uint8_t *)&tx_message.magic, sizeof(tx_message.magic));
+    
+    // 2. Agregar campos del protocolo
     LW_Formatter_Add_Variable_Interface(&LW_Formatter, 
         (uint8_t *)&tx_message.DEVICE_ID, sizeof(tx_message.DEVICE_ID));
     LW_Formatter_Add_Variable_Interface(&LW_Formatter, 
         (uint8_t *)&tx_message.MESSAGE_SOURCE_ID, sizeof(tx_message.MESSAGE_SOURCE_ID));
     
-    // Calcular y agregar tamaño de datos
+    // 3. Calcular y agregar tamaño de datos
     tx_message.DATA_BYTE_SIZE = sizeof(chat_data);
     LW_Formatter_Add_1_Byte_Unsigned(&LW_Formatter, tx_message.DATA_BYTE_SIZE);
     
@@ -234,15 +268,40 @@ void Process_Received_Message() {
     if (state == RADIOLIB_ERR_NONE) {
         size_t packet_length = lora_modem.getPacketLength();
         
-        // Validar CRC
+        // Validar longitud mínima (magic + header básico)
+        if (packet_length < 8) {
+            Serial.println("DEBUG:PACKET_TOO_SHORT");
+            digitalWrite(LED, LOW);
+            lora_modem.startReceive();
+            return;
+        }
+        
+        // 1. VALIDAR MAGIC BYTES (filtrar ruido de LoRaWAN y otros)
+        uint32_t received_magic = *(uint32_t*)rx_buffer;
+        if (received_magic != PROTOCOL_MAGIC) {
+            Serial.println("DEBUG:INVALID_MAGIC_BYTES:NOISE_FILTERED");
+            digitalWrite(LED, LOW);
+            lora_modem.startReceive();
+            return;
+        }
+        
+        // 2. Validar CRC
         uint16_t calc_crc = Calculate_CRC(rx_buffer, packet_length, CRC_POLY);
         
         if (calc_crc == 0) {
             // CRC válido - decodificar mensaje
             rx_message = *(Tk_IOT_LW_Message *)rx_buffer;
             
-            // Extraer datos del chat (después del header de 17 bytes)
-            Chat_Message_Data* received_data = (Chat_Message_Data*)&rx_buffer[17];
+            // 3. IGNORAR mensajes propios (evitar eco)
+            if (rx_message.MESSAGE_SOURCE_ID == DEVICE_ID) {
+                Serial.println("DEBUG:IGNORING_OWN_MESSAGE");
+                digitalWrite(LED, LOW);
+                lora_modem.startReceive();
+                return;
+            }
+            
+            // 4. Extraer datos del chat (después del header: magic(4) + IDs(16) + size(1) = 21 bytes)
+            Chat_Message_Data* received_data = (Chat_Message_Data*)&rx_buffer[21];
             
             // Obtener RSSI
             float rssi = lora_modem.getRSSI();
@@ -332,9 +391,20 @@ void setup() {
     delay(1000);
     
     Serial.println("\n=================================");
-    Serial.println("  Sistema LoRa P2P Chat v1.0");
+    Serial.println("  Sistema LoRa P2P Chat v2.0");
     Serial.println("  Tekroy Desarrollos");
     Serial.println("=================================\n");
+    
+    // Generar ID único basado en MAC del ESP32
+    DEVICE_ID = Generate_Unique_ID();
+    tx_message.DEVICE_ID = DEVICE_ID;
+    tx_message.MESSAGE_SOURCE_ID = DEVICE_ID;
+    
+    Serial.print("DEVICE_ID: 0x");
+    Serial.println((unsigned long long)DEVICE_ID, HEX);
+    Serial.print("PROTOCOL_MAGIC: 0x");
+    Serial.println(PROTOCOL_MAGIC, HEX);
+    Serial.println();
     
     // Inicializar formateador
     LW_Formatter_Init(&LW_Formatter, formatter_buffer, BUFFER_SIZE);
